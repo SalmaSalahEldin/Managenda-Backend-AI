@@ -1458,56 +1458,216 @@ def get_initiateGeneral():
 
 
 #DELETE
+# from pymongo import MongoClient, errors
+#
+# class ProposeDeleteTaskSchema(BaseModel):
+#     task_name: str = Field(..., description="The name of the task to be potentially deleted")
+#     user_id: str = Field(..., description="The identifier of the user who owns the task")
+#
+#
+# def propose_delete_task(task_name: str, user_id: str) -> dict:
+#     try:
+#         client = Constants.client
+#         client.admin.command('ping')
+#         db = client.get_database("Managenda")
+#         SCHEDULE_COLLECTION = db.get_collection("schedule_tasks")
+#         GENERAL_COLLECTION = db.get_collection("general_tasks")
+#
+#         query = {"task_name": task_name, "user_id": user_id}
+#         schedule_task = SCHEDULE_COLLECTION.find_one(query)
+#         general_task = GENERAL_COLLECTION.find_one(query)
+#
+#         # if schedule_task and general_task:
+#         #     return {
+#         #         "response": "Are you sure that you want to delete the task from schedule or general tasks?",
+#         #         "data": {
+#         #             "task_name": task_name,
+#         #             "collection_name": collection_name,
+#         #             "is_similar": False,
+#         #             "options": [
+#         #                 {"task_name": schedule_task["task_name"], "collection_name": "schedule_tasks"},
+#         #                 {"task_name": general_task["task_name"], "collection_name": "general_tasks"}
+#         #             ]
+#         #         }
+#         #     }
+#
+#         if schedule_task:
+#             # if 'task_embeddings' in schedule_task:
+#             #     del schedule_task['task_embeddings']
+#             return {
+#                 "response": "Task found in schedule collection. Confirm to proceed with deletion. This action cannot be undone.",
+#                 "data": {
+#                     "task_name": task_name,
+#                     "collection_name": "schedule_tasks",
+#                     "is_similar": False
+#                 }
+#                 # "data": schedule_task
+#             }
+#
+#         if general_task:
+#             # if 'task_embeddings' in general_task:
+#             #     del general_task['task_embeddings']
+#             return {
+#                 "response": "Task found in general collection. Confirm to proceed with deletion. This action cannot be undone.",
+#                 "data": {
+#                     "task_name": task_name,
+#                     "collection_name": "general_tasks",
+#                     "is_similar": False
+#                 }
+#                 # "data": general_task
+#             }
+#
+#         most_similar_task, collection = SelfQuery.retrieve_most_similar_task_from_the_both_collections(task_name, user_id)
+#         if most_similar_task:
+#             return {
+#                 "response": f"Exact task not found. Found similar task '{most_similar_task}'. Confirm to delete this task instead. This action cannot be undone.",
+#                 "data": {
+#                     "task_name": most_similar_task,
+#                     "collection_name": collection,
+#                     "is_similar": True
+#                 }
+#             }
+#
+#         return {
+#             "response": "No task or similar task found.",
+#             "data": {}
+#         }
+#
+#     except errors.ConfigurationError as e:
+#         return {
+#             "response": f"MongoDB connection error: {e}",
+#             "data": {}
+#         }
+#     except errors.PyMongoError as e:
+#         return {
+#             "response": f"MongoDB error: {e}",
+#             "data": {}
+#         }
+#     except Exception as e:
+#         return {
+#             "response": f"An error occurred: {e}",
+#             "data": {}
+#         }
+#
+# def get_propose_delete_task():
+#     return StructuredTool(
+#         name="propose_delete_task",
+#         description="Use this tool to propose the deletion of a task and ask for confirmation. This action is permanent.",
+#         func=propose_delete_task,
+#         args_schema=ProposeDeleteTaskSchema,
+#     )
+#
+#
+#
+#
+#
+# class ConfirmAndDeleteTaskSchema(BaseModel):
+#     task_name: str = Field(..., description="The name of the task to be potentially deleted")
+#     user_id: str = Field(..., description="The identifier of the user who owns the task")
+#     collection_name: str = Field(..., description="The name of the collection where the task is stored, this collection_name should be either general_tasks or schedule_tasks and you should extract this collection_name from the propose_delete_task tool")
+#
+#
+# def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) -> dict:
+#     try:
+#         client = Constants.client
+#         client.admin.command('ping')
+#         db = client.get_database("Managenda")
+#         collection = db.get_collection(collection_name)
+#
+#         query = {"task_name": task_name, "user_id": user_id}
+#         task_to_delete = collection.find_one(query)  # Retrieve task details before deletion
+#
+#         if task_to_delete:
+#             result = collection.delete_one(query)
+#
+#             if result.deleted_count > 0:
+#                 if 'task_embeddings' in task_to_delete:
+#                     del task_to_delete['task_embeddings']  # Remove the task_embeddings field
+#                 return {
+#                     "response": "Task deleted successfully.",
+#                     "data": task_to_delete  # Return the modified task's payload
+#                 }
+#             else:
+#                 return {
+#                     "response": "Task deletion failed. It may have already been deleted or not found.",
+#                     "data": {}
+#                 }
+#         else:
+#             return {
+#                 "response": "Task not found.",
+#                 "data": {
+#                     "task_name": task_name,
+#                     "user_id": user_id,
+#                     "collection_name": collection_name
+#                 }
+#             }
+#
+#     except errors.ConfigurationError as e:
+#         return {
+#             "response": f"MongoDB connection error: {e}",
+#             "data": {}
+#         }
+#     except errors.PyMongoError as e:
+#         return {
+#             "response": f"MongoDB error: {e}",
+#             "data": {}
+#         }
+#     except Exception as e:
+#         return {
+#             "response": f"An error occurred during the deletion process: {e}",
+#             "data": {}
+#         }
+#
+# def get_confirm_and_delete_task():
+#     return StructuredTool(
+#         name= "delete_task",
+#         description= """You should use this tool after user's deletion confirmation or after invoking propose_delete_task tool, After ensuring the confirmation of task deletion, This tool allows users to directly delete tasks from the MongoDB database. It's designed for removing tasks that are no longer needed, such as completed tasks not to be repeated or tasks added by mistake. The deletion targets a specific task based on its name, and the owning user's ID, ensuring precision in the operation. Users are advised to carefully confirm task details before deletion due to the irreversible nature of this action. Use with caution to avoid unintended data loss. """,
+#         func= confirm_and_delete_task,
+#         args_schema= ConfirmAndDeleteTaskSchema,
+#     )
+
+
+
+
+from pymongo import MongoClient, errors
+from pydantic import BaseModel, Field
+from datetime import datetime
+from bson import ObjectId
+from typing import Optional
+from langchain.tools import StructuredTool
+import json
+
 class ProposeDeleteTaskSchema(BaseModel):
     task_name: str = Field(..., description="The name of the task to be potentially deleted")
     user_id: str = Field(..., description="The identifier of the user who owns the task")
-    collection_name: str = Field(..., description="The name of the collection where the task is stored")
 
+def json_serialize(obj):
+    if isinstance(obj, (datetime, ObjectId)):
+        return str(obj)
+    raise TypeError("Type not serializable")
 
-def propose_delete_task(task_name: str, user_id: str, collection_name: str) -> dict:
+def propose_delete_task(task_name: str, user_id: str) -> dict:
     try:
         client = Constants.client
         client.admin.command('ping')
         db = client.get_database("Managenda")
-        SCHEDULE_COLLECTION = db.get_collection("schedule_tasks")
-        GENERAL_COLLECTION = db.get_collection("general_tasks")
+        schedule_collection = db.get_collection("schedule_tasks")
+        general_collection = db.get_collection("general_tasks")
 
         query = {"task_name": task_name, "user_id": user_id}
-        schedule_task = SCHEDULE_COLLECTION.find_one(query)
-        general_task = GENERAL_COLLECTION.find_one(query)
-
-        if schedule_task and general_task:
-            return {
-                "response": "Are you sure that you want to delete the task from schedule or general tasks?",
-                "data": {
-                    "task_name": task_name,
-                    "collection_name": collection_name,
-                    "is_similar": False,
-                    "options": [
-                        {"task_name": schedule_task["task_name"], "collection_name": "schedule_tasks"},
-                        {"task_name": general_task["task_name"], "collection_name": "general_tasks"}
-                    ]
-                }
-            }
+        schedule_task = schedule_collection.find_one(query)
+        general_task = general_collection.find_one(query)
 
         if schedule_task:
             return {
                 "response": "Task found in schedule collection. Confirm to proceed with deletion. This action cannot be undone.",
-                "data": {
-                    "task_name": task_name,
-                    "collection_name": "schedule_tasks",
-                    "is_similar": False
-                }
+                "data": json.loads(json.dumps(schedule_task, default=json_serialize))
             }
 
         if general_task:
             return {
                 "response": "Task found in general collection. Confirm to proceed with deletion. This action cannot be undone.",
-                "data": {
-                    "task_name": task_name,
-                    "collection_name": "general_tasks",
-                    "is_similar": False
-                }
+                "data": json.loads(json.dumps(general_task, default=json_serialize))
             }
 
         most_similar_task, collection = SelfQuery.retrieve_most_similar_task_from_the_both_collections(task_name, user_id)
@@ -1550,9 +1710,10 @@ def get_propose_delete_task():
         args_schema=ProposeDeleteTaskSchema,
     )
 
-
-
-
+class ConfirmAndDeleteTaskSchema(BaseModel):
+    task_name: str = Field(..., description="The name of the task to be potentially deleted")
+    user_id: str = Field(..., description="The identifier of the user who owns the task")
+    collection_name: str = Field(..., description="The name of the collection where the task is stored. This should be either 'general_tasks' or 'schedule_tasks' and you should extract this from the propose_delete_task tool.")
 
 def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) -> dict:
     try:
@@ -1562,20 +1723,26 @@ def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) 
         collection = db.get_collection(collection_name)
 
         query = {"task_name": task_name, "user_id": user_id}
-        result = collection.delete_one(query)
+        task_to_delete = collection.find_one(query)  # Retrieve task details before deletion
 
-        if result.deleted_count > 0:
-            return {
-                "response": "Task deleted successfully.",
-                "data": {
-                    "task_name": task_name,
-                    "user_id": user_id,
-                    "collection_name": collection_name
+        if task_to_delete:
+            result = collection.delete_one(query)
+
+            if result.deleted_count > 0:
+                if 'task_embeddings' in task_to_delete:
+                    del task_to_delete['task_embeddings']  # Remove the task_embeddings field
+                return {
+                    "response": "Task deleted successfully.",
+                    "data": json.loads(json.dumps(task_to_delete, default=json_serialize))  # Return the modified task's payload
                 }
-            }
+            else:
+                return {
+                    "response": "Task deletion failed. It may have already been deleted or not found.",
+                    "data": {}
+                }
         else:
             return {
-                "response": "Task deletion failed. It may have already been deleted or not found.",
+                "response": "Task not found.",
                 "data": {
                     "task_name": task_name,
                     "user_id": user_id,
@@ -1599,14 +1766,19 @@ def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) 
             "data": {}
         }
 
-
 def get_confirm_and_delete_task():
     return StructuredTool(
-        name= "delete_task",
-        description= """You should use this tool after user's deletion confirmation or after invoking propose_delete_task tool, After ensuring the confirmation of task deletion, This tool allows users to directly delete tasks from the MongoDB database. It's designed for removing tasks that are no longer needed, such as completed tasks not to be repeated or tasks added by mistake. The deletion targets a specific task based on its name, and the owning user's ID, ensuring precision in the operation. Users are advised to carefully confirm task details before deletion due to the irreversible nature of this action. Use with caution to avoid unintended data loss. """,
-        func= confirm_and_delete_task,
-        args_schema= ProposeDeleteTaskSchema,
+        name="delete_task",
+        description="""You should use this tool after user's deletion confirmation or after invoking the propose_delete_task tool. 
+        After ensuring the confirmation of task deletion, this tool allows users to directly delete tasks from the MongoDB database. 
+        It's designed for removing tasks that are no longer needed, such as completed tasks not to be repeated or tasks added by mistake. 
+        The deletion targets a specific task based on its name and the owning user's ID, ensuring precision in the operation. 
+        Users are advised to carefully confirm task details before deletion due to the irreversible nature of this action. 
+        Use with caution to avoid unintended data loss.""",
+        func=confirm_and_delete_task,
+        args_schema=ConfirmAndDeleteTaskSchema,
     )
+
 
 
 
