@@ -71,13 +71,13 @@ class GeneralTask_get(BaseModel):
 
 class GeneralTask_add(BaseModel):
     task_name: str
-    embeddings: Optional[List[float]] = None
+    task_embeddings: Optional[List[float]] = None
     steps: Optional[List[Step_general]] = []
 
 
 class ScheduledTask_add(BaseModel):
     task_name: str
-    embeddings: Optional[List[float]] = None
+    task_embeddings: Optional[List[float]] = None
     steps: Optional[List[Step_add]] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -280,7 +280,7 @@ def add_task_to_category(task_payload: TaskPayload, user_id: str, category: str,
     
         task_dict = task.dict(exclude_unset=True)  # Exclude fields not explicitly set
         # Generate embeddings for the task name
-        task_dict['embeddings'] = generate_embedding(task.task_name)
+        task_dict['task_embeddings'] = generate_embedding(task.task_name)
 
         # Include steps only if provided
         steps = task_dict.pop("steps", None)
@@ -309,7 +309,7 @@ def add_task_to_category(task_payload: TaskPayload, user_id: str, category: str,
 
         task_dict = task.dict(exclude_unset=True)  # Exclude fields not explicitly set
         # Generate embeddings for the task name
-        task_dict['embeddings'] = generate_embedding(task.task_name)
+        task_dict['task_embeddings'] = generate_embedding(task.task_name)
         # Include steps only if provided
         steps = task_dict.pop("steps", None)
 
