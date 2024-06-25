@@ -1,3 +1,4 @@
+import pymongo
 from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
@@ -12,6 +13,15 @@ import numpy as np
 # from sklearn.metrics.pairwise import cosine_similarity
 
 os.environ["OPENAI_API_KEY"] = "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"
+
+def get_mongo_client():
+    return MongoClient(
+        "mongodb+srv://Managenda:Graduationproject2024@cluster0.zs4ebry.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
+        socketTimeoutMS=600000,  # 60 seconds
+        connectTimeoutMS=600000,  # 60 seconds
+        serverSelectionTimeoutMS = 600000,  # 60 seconds
+
+    )
 
 def get_similar_tasks(task_names_list, task_name):
     docs = []
@@ -64,7 +74,13 @@ def generate_embedding(text: str) -> list[float]:
 
 def get_similar_task(task_name,user_id,search_index,collection_name,path):
     Mongo_URI = "mongodb+srv://Managenda:Graduationproject2024@cluster0.zs4ebry.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-    client = MongoClient(Mongo_URI)
+    # client = MongoClient(Mongo_URI)
+    # client = pymongo.MongoClient(
+    #     "mongodb+srv://Managenda:Graduationproject2024@cluster0.zs4ebry.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+
+    client = get_mongo_client()
+    client.admin.command('ping')
+    print("MongoDB connection successful.")
 
     db_name = "Managenda"
     MONGODB_COLLECTION = client[db_name][collection_name]
@@ -100,12 +116,12 @@ def cosine_similarity(vec1, vec2):
 
 def retrieve_most_similar_task_from_the_both_collections(task_name: str, user_id: str):
     schedule_similar_task = get_similar_task(
-        task_name.lower(), user_id, "vector_index2", "schedule_tasks", "embeddings"
+        task_name.lower(), user_id, "vector_index2", "schedule_tasks", "task_embeddings"
     )
     print('Schedule similar task:', schedule_similar_task)
 
     general_similar_task = get_similar_task(
-        task_name.lower(), user_id, "vector_index", "general_tasks", "embeddings"
+        task_name.lower(), user_id, "vector_index", "general_tasks", "task_embeddings"
     )
     print('General similar task:', general_similar_task)
 
