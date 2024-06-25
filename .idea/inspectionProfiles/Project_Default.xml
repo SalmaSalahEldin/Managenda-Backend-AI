@@ -1,0 +1,24 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="11">
+            <item index="0" class="java.lang.String" itemvalue="gradio_client" />
+            <item index="1" class="java.lang.String" itemvalue="llama-cpp-python" />
+            <item index="2" class="java.lang.String" itemvalue="langchain" />
+            <item index="3" class="java.lang.String" itemvalue="transformers" />
+            <item index="4" class="java.lang.String" itemvalue="gradio" />
+            <item index="5" class="java.lang.String" itemvalue="chunkipy" />
+            <item index="6" class="java.lang.String" itemvalue="sentence-transformers" />
+            <item index="7" class="java.lang.String" itemvalue="PyPDF2" />
+            <item index="8" class="java.lang.String" itemvalue="langid" />
+            <item index="9" class="java.lang.String" itemvalue="translate" />
+            <item index="10" class="java.lang.String" itemvalue="openai" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
