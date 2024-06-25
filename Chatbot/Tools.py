@@ -42,7 +42,9 @@ from langchain_community.document_loaders import UnstructuredFileLoader
 import re
 from controllers.tasks_controller import add_task_to_category_controller
 from models.tasks import TaskPayload, Step_add, ScheduledTask_add, GeneralTask_add, Step_general, update_general_task, update_scheduled_task
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 from openai import OpenAI
 
 logging.basicConfig(level=logging.INFO)
@@ -54,6 +56,16 @@ logger = logging.getLogger(__name__)
 # )
 
 
+
+os.environ["OPENAI_API_KEY"] = "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"
+client = OpenAI(api_key="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")
+os.environ["PINECONE_API_KEY"] = "da2b64b9-04d6-4ac3-b075-a242f4755479"
+embeddings = OpenAIEmbeddings()
+
+
+
+# Define models
+
 os.environ["OPENAI_API_KEY"] = "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"
 client = OpenAI(api_key="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")
 os.environ["PINECONE_API_KEY"] = "da2b64b9-04d6-4ac3-b075-a242f4755479"
@@ -64,7 +76,7 @@ embeddings = OpenAIEmbeddings()
 class GeneralTaskSchema(BaseModel):
     task_name: str = Field(description="The main task name that the user wants to perform")
     steps: str = Field(description="The steps mentioned in the text that should be done prior to the main task")
-    category: Optional[str] = Field("Un-categorized", min_length=1,
+    category: Optional[str] = Field("un_categorized", min_length=1,
                                     description="The category of the main task. ONLY IF the user has inputted it")
     user_id: str = Field(min_length=1, description="The ID of the user. This field is always required, DON'T ever generate a user_id by yourself. Always take this argument from agent's arguments.")
     insert_anyway: bool = Field(False,
@@ -120,7 +132,7 @@ def general_task(task_name, steps, user_id, category, task_type='general', inser
             "4) Turn it off 0 sec\n"
             "Json:\n"
             "{\n"
-            "    \"Category\": \"Un-categorized\",\n"
+            "    \"Category\": \"un_categorized\",\n"
             "    \"task_name\": \"Do the laundry\",\n"
             "    \"Steps\": {\"Step 1\": [\"Put the clothes in the washing machine\", \"None\"],\n"
             "              \"Step 2\": [\"Put the washing liquid\", \"01:18:00\"],\n"
@@ -213,7 +225,6 @@ def get_general_task_tool():
 
 
 # without model.predict (without response formatting)
-
 class StepForSchedule(BaseModel):
     step_name: str
     start_time: str
@@ -304,15 +315,20 @@ class ScheduleTaskToolSchema(BaseModel):
                     "For example, if a user has a task starting on the 1st of July and plans to complete it by the 5th of July, the end_date will be the 5th of July."
     )
     category: Optional[str] = Field(
-        "Un-categorized",
-        description="The category of the task.ONLY IF the user has inputted it. Leave it Un-categorized if the user didn't input it explicitly",
+        "un_categorized",
+        description="The category of the task.ONLY IF the user has inputted it. Leave it un_categorized if the user didn't input it explicitly",
     )
     steps: List[StepForSchedule] = Field(
         default_factory=list,
         description="Detailed steps involved in completing the task, each with a specified start and end time."
     )
+    user_id: str = Field(min_length=1,
+         description="The ID of the user. This field is always required, DON'T ever generate a user_id by yourself. Always take this argument from agent's arguments.")
+    insert_anyway: bool = Field(False,
+         description="Regardless of the existence of an old task scheduled for the same start time, the user may choose to insert their task anyway.")
 
-def insert_schedule_task_to_mongodb(task_data, user_id='salma', category="work", task_type='scheduled', insert_anyway=True):
+
+def insert_schedule_task_to_mongodb(task_data, user_id, category, insert_anyway, task_type='scheduled'):
     steps = [
         StepForSchedule(
             step_name=step['step_name'],
@@ -322,15 +338,6 @@ def insert_schedule_task_to_mongodb(task_data, user_id='salma', category="work",
         for step in task_data['schedule_task']['steps']
     ]
 
-    # task_payload = {
-    #     "schedule_task": {
-    #         "task_name": task_data['schedule_task']['task_name'],
-    #         "steps": steps,
-    #         "start_time": task_data['schedule_task']['start_time'],
-    #         "end_time": task_data['schedule_task']['end_time']
-    #     }
-    # }
-
     task_payload = {
             "task_name": task_data['schedule_task']['task_name'],
             "steps": steps,
@@ -339,11 +346,9 @@ def insert_schedule_task_to_mongodb(task_data, user_id='salma', category="work",
     }
 
     print("task_payload")
-
     print(task_payload)
 
     task_payload = TaskPayload(schedule_task=task_payload, general_task=None)
-
 
     try:
         response = add_task_to_category_controller(task_payload, user_id=user_id, category=category, task_type=task_type, insert_anyway=insert_anyway)
@@ -354,6 +359,10 @@ def insert_schedule_task_to_mongodb(task_data, user_id='salma', category="work",
     except Exception as e:
         logger.error(f"An exception occurred while inserting the task: {e}")
         answer = f'An exception occurred while inserting the task: {e}'
+
+
+    if answer == "Task conflicts with existing tasks":
+        answer = "You currently have another task scheduled for the same time. Would you prefer to insert this task anyway or choose a different time for this task?"
 
     result = {
         "response": answer,
@@ -391,8 +400,7 @@ def parse_steps_for_scheduled(steps_json: List[Dict[str, str]], date: str) -> Li
                 StepForSchedule(step_name=step_name, start_time=start_time, end_time=end_time))
     return steps
 
-def schedule_task(task_name, steps=None, category="Un-categorized", date=None, start_time=None, end_time=None,
-                  end_date="null"):
+def schedule_task(task_name, user_id, insert_anyway=False, steps=None, category="un_categorized", date=None, start_time=None, end_time=None, end_date="null"):
 
     logger.info("Entered Scheduled task tool")
     if start_time is None and end_time is None:
@@ -461,7 +469,7 @@ def schedule_task(task_name, steps=None, category="Un-categorized", date=None, s
                     step["end_time"] = end
 
     logger.info(f"Task data: {task_data}")
-    return insert_schedule_task_to_mongodb(task_data, user_id='salma', category=category)
+    return insert_schedule_task_to_mongodb(task_data, user_id, category=category, insert_anyway=insert_anyway)
 
 def get_schedule_task_tool():
     return StructuredTool(
@@ -470,7 +478,6 @@ def get_schedule_task_tool():
         func=schedule_task,
         args_schema=ScheduleTaskToolSchema,
     )
-
 
 
 
@@ -495,8 +502,8 @@ class SetReminderToolSchema(BaseModel):
         description="Time of the reminder only if the user inputs it. Leave empty if the user didn't input it",
     )
     category: Optional[str] = Field(
-        "Un-categorized",
-        description="The category of the task. ONLY IF the user has inputted it. Leave it Un-categorized if the user didn't input it explicitly",
+        "un_categorized",
+        description="The category of the task. ONLY IF the user has inputted it. Leave it un_categorized if the user didn't input it explicitly",
     )
     user_id: str = Field(min_length=1,
          description="The ID of the user. This field is always required, DON'T ever generate a user_id by yourself. Always take this argument from agent's arguments."
@@ -505,7 +512,7 @@ class SetReminderToolSchema(BaseModel):
          description="Regardless of the existence of an old task scheduled for the same start time, the user may choose to insert their task anyway."
     )
 
-def set_reminder_tool(reminder_name, user_id, date=None, time=None, category="un-categorized", insert_anyway=False):
+def set_reminder_tool(reminder_name, user_id, date=None, time=None, category="un_categorized", insert_anyway=False):
     if time is None:
         return {
             "response": "Time is missing.",
@@ -534,7 +541,7 @@ def set_reminder_tool(reminder_name, user_id, date=None, time=None, category="un
         + "Returned json:\n"
         + "json:\n"
         + "{\n"
-        + '"category": un-categorized\n'
+        + '"category": un_categorized\n'
         + '"task_name": "meeting",\n'
         + '"date": {current_time},\n'
         + '"start_time": datetime.time(22,45),\n'
@@ -853,6 +860,7 @@ def update(task_name, collection_name, user_id, category=None, new_category=None
             updated = result[0] != task_details
 
             id = result[0].pop("_id") if isinstance(result[0].get("_id"), str) else result[0].pop("_id")["$oid"]
+
 
             if result[0]["task_name"] != task_details["task_name"]:
                 result[0]["task_embeddings"] = SelfQuery.generate_embedding(result[0]["task_name"])
@@ -1457,6 +1465,7 @@ def get_initiateGeneral():
 
 
 
+
 #DELETE
 # from pymongo import MongoClient, errors
 #
@@ -1908,4 +1917,55 @@ def get_time_management_tool():
         description="Use this tool to answer user questions about time management and procrastination.",
         func=process,
         args_schema=TimeManagementToolSchema,
+    )
+
+
+
+
+
+
+from pydantic import BaseModel, Field
+from openai import OpenAI
+
+# client = OpenAI()
+
+class GreetingThankingToolSchema(BaseModel):
+    query: str = Field(..., min_length=1, description="User queries related to greetings, thanking, or goodbyes")
+
+def process_greeting_thanking(query):
+    messages = [
+        {"role": "system", "content": "You are an assistant that can recognize and respond to greetings, thanking, and goodbye messages."},
+        {"role": "user", "content": query}
+    ]
+
+    try:
+        # response = client.chat.completions.create(model="gpt-3.5-turbo",
+        # messages=messages)
+
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "user", "content": "Hello!"}
+            ]
+        )
+
+        answer = response.choices[0].message.content.strip()
+        # answer = client.ChatCompletion.create()
+
+        return {
+            "response": answer,
+            "data": {}
+        }
+    except Exception as e:
+        return {
+            "response": f"An error occurred: {str(e)}",
+            "data": {}
+        }
+
+def get_greeting_thanking_tool():
+    return StructuredTool(
+        name="greeting_thanking",
+        description="Use this tool to respond to user greetings, thanking, or goodbye messages.",
+        func=process_greeting_thanking,
+        args_schema=GreetingThankingToolSchema,
     )
