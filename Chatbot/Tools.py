@@ -1457,7 +1457,6 @@ def get_initiateGeneral():
 
 
 
-
 #DELETE
 class ProposeDeleteTaskSchema(BaseModel):
     task_name: str = Field(..., description="The name of the task to be potentially deleted")
@@ -1529,17 +1528,17 @@ def propose_delete_task(task_name: str, user_id: str, collection_name: str) -> d
 
     except errors.ConfigurationError as e:
         return {
-            "response": f"MongoDB configuration error: {str(e)}",
+            "response": f"MongoDB connection error: {e}",
             "data": {}
         }
     except errors.PyMongoError as e:
         return {
-            "response": f"MongoDB error: {str(e)}",
+            "response": f"MongoDB error: {e}",
             "data": {}
         }
     except Exception as e:
         return {
-            "response": f"An unexpected error occurred: {str(e)}",
+            "response": f"An error occurred: {e}",
             "data": {}
         }
 
@@ -1562,8 +1561,6 @@ def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) 
         db = client.get_database("Managenda")
         collection = db.get_collection(collection_name)
 
-        task_data = collection.find_one({"task_name": task_name, "user_id": user_id})
-
         query = {"task_name": task_name, "user_id": user_id}
         result = collection.delete_one(query)
 
@@ -1575,11 +1572,6 @@ def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) 
                     "user_id": user_id,
                     "collection_name": collection_name
                 }
-            }
-        if result.deleted_count > 0:
-            return {
-                "response": "Task deleted successfully.",
-                "data": task_data
             }
         else:
             return {
@@ -1593,17 +1585,17 @@ def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) 
 
     except errors.ConfigurationError as e:
         return {
-            "response": f"MongoDB connection error: {str(e)}",
+            "response": f"MongoDB connection error: {e}",
             "data": {}
         }
     except errors.PyMongoError as e:
         return {
-            "response": f"MongoDB error: {str(e)}",
+            "response": f"MongoDB error: {e}",
             "data": {}
         }
     except Exception as e:
         return {
-            "response": f"An error occurred during the deletion process: {str(e)}",
+            "response": f"An error occurred during the deletion process: {e}",
             "data": {}
         }
 
@@ -1615,7 +1607,6 @@ def get_confirm_and_delete_task():
         func= confirm_and_delete_task,
         args_schema= ProposeDeleteTaskSchema,
     )
-
 
 
 
