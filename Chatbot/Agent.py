@@ -23,6 +23,7 @@ tools = [
     Tools.get_confirm_and_delete_task(),
     Tools.get_retrieve_task_tool(),
     Tools.get_time_management_tool(),
+    Tools.get_greeting_thanking_tool()
 ]
 current_datetime = datetime.now()
 current_datetime_message = [{"role": "assistant", "content": str(current_datetime)}]
@@ -56,7 +57,7 @@ system_template = ("""
               - If a date is not specified, assume {current_date}.
               - Prompt the user for the start time if it is not provided: "What is the start time for the appointment?"
               - Prompt the user for the end time if it is not provided: "What is the end time for the appointment?"
-              - Prompt the user for the category if it is not provided: "Would you like to add your task to a category or leave it uncategorized?"
+              - Prompt the user for the category if it is not provided: "Would you like to add your task to a category or leave it un_categorized?"
            b. Use the set_reminder tool with time, date, and reminder name.
               - If a date is not specified, assume {current_date}.
            c. If the user provides a sequence of steps for a task, use the general_task tool to extract the main task category, name, steps, and duration for each step.
@@ -81,16 +82,33 @@ system_template = ("""
         9. Use the time_management_database for questions about time management and procrastination.
         10. Invoke only one tool at a time and do not use multiple tools simultaneously for the same task.
             - If an error occurs with a tool, inform the user: "Sorry, there is an error. You should contact us."
-        11. Do not invoke get_confirm_and_delete_task without invoking get_propose_delete_task first.
+        11. Do not invoke get_confirm_and_delete_task without invoking get_propose_delete_task first unless the user is confirmed to delete it.
         12. Ensure to always extract all steps.
         13. If there is a conflict with an existing task, ask the user: "Would you like to insert it anyway?"
-        
+        14. If you invoked get_confirm_and_delete_task tool you should always return what is returned by this tool and not the output of get_propose_delete_task tool.
+        15. If the user has asked to UPDATE the details of a task, he was just talking about, then use your MEMORY ONLY to update it. If you DO NOT REMEMBER the task he is talking about use the updateGeneral tool to update it"         
+                     "Use the updateGeneral tool for updating:"
+                     "1-where the old details will first be fetched from the database which is a dictionary "
+                     "2-you'll compare the new info that the user wants tp update with the old task's details"
+                     "3-update each field one by one on the dictionary of the old details and then return the updated dictionary"
+                     "The updateGeneral tool is going to be invoked ONLY IF you DO NOT REMEMBER the task that the user is talking about"         
+                     "Here's a thing you should be able to differentiate between:"
+                             "1)Scheduled task: which a task having date and time, which is specified by the user to be done in the future"
+                             "2)General task: which is a task that doesn't have a specific time, it's some steps (preparations) that are done prior to the scheduled task"
+                     "Being able to differentiate between the last mentioned TWO THINGS, you should use the getGeneral tool when the user wants to update a general task\ "
+                             "and you SHOULD use the getSchedule tool when the user wants to update a scheduled task"
+                     "Before calling the updateGeneral tool, you SHOULD ALWAYS invoke the getSchedule tool or the getGeneral tool according to the task type that the user has mentioned"        
+                     "the getSchedule tool or the getGeneral tool SHOULD ALWAYS be called BEFORE calling the updateGeneral tool to FETCH the details of the task."
+                     "Use the initiateGeneral tool when the user wants to start or initiate a general task:"
+                     "1-where the start_time parameter should be in the form of HH:MM"
+                     "2-and the date parameter should be in the form of %Y-%m-%d"
         Here is the chat history:
         {chat_history}
         
         Here is some more text:
         {input}
         """)
+
 
 # .format(current_date=current_date, current_time_plus_2_hours=current_time_plus_2_hours, current_day=current_day))
 
@@ -130,6 +148,7 @@ agent_with_chat_history = RunnableWithMessageHistory(
 
 # user_id = 'salma'
 
+
 # text = "For alda lessoion  for an hour, I start with a warm-up for half an hour, move on to cardio exercises,make sure to hydrate put it in category work"
 
 
@@ -144,6 +163,10 @@ agent_with_chat_history = RunnableWithMessageHistory(
 
 # text = "I have a project discsussiaonsann on thursday so schedule it invoke the schedule tool ,it starts 12:30 afternoon and ends at 1:30 afternoon, first step is to prepare a presentation from 5:30 afternoon to 6:30 afternoon, second step is to listen to music from 6 am to 7 am, add it to category work if there is a conflict with any existing task also add this task"
 # text = "i want to update the task named physics class in general task collection to be named physics classs"
+
+
+# text = "delete arabic discussion"
+# text = "i confirm you to delete lolo "
 
 def send_msg(text, user_id):
     user_id = [{"role": "assistant", "content": user_id}]
