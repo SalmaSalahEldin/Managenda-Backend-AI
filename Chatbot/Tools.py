@@ -62,7 +62,10 @@ client = OpenAI(api_key="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")
 os.environ["PINECONE_API_KEY"] = "da2b64b9-04d6-4ac3-b075-a242f4755479"
 embeddings = OpenAIEmbeddings()
 
-
+def json_serialize(obj):
+    if isinstance(obj, (datetime, ObjectId)):
+        return str(obj)
+    raise TypeError("Type not serializable")
 
 # Define models
 class GeneralTaskSchema(BaseModel):
@@ -175,10 +178,34 @@ def general_task(task_name, steps, user_id, category, task_type='general', inser
                 "data": {}
             }
 
+
+
+
+        client = Constants.client
+        client.admin.command('ping')
+        db = client.get_database("Managenda")
+        general_collection = db.get_collection("general_tasks")
+
+        query = {"task_name": task_name, "user_id": user_id}
+        general_task = general_collection.find_one(query)
+
+        if 'category' in general_task:
+            del general_task['category']
+        if 'task_embeddings' in general_task:
+            del general_task['task_embeddings']
+        if '_id' in general_task:
+            general_task['task_id'] = str(general_task.pop('_id'))
         return {
             "response": response,
-            "data": task_payload.dict()
+            "data": json.loads(json.dumps(general_task, default=json_serialize))
         }
+
+
+
+        # return {
+        #     "response": response,
+        #     "data": task_payload.dict()
+        # }
 
     except ValueError as ve:
         print(f"Error parsing JSON: {ve}")
@@ -337,6 +364,7 @@ def insert_schedule_task_to_mongodb(task_data, user_id, category, insert_anyway,
             "end_time": task_data['schedule_task']['end_time']
     }
 
+    task_name = task_payload["task_name"]
     print("task_payload")
     print(task_payload)
 
@@ -356,15 +384,41 @@ def insert_schedule_task_to_mongodb(task_data, user_id, category, insert_anyway,
     if answer == "Task conflicts with existing tasks":
         answer = "You currently have another task scheduled for the same time. Would you prefer to insert this task anyway or choose a different time for this task?"
 
-    result = {
+
+
+
+
+    client = Constants.client
+    client.admin.command('ping')
+    db = client.get_database("Managenda")
+    schedule_collection = db.get_collection("schedule_tasks")
+
+    query = {"task_name": task_name, "user_id": user_id}
+    schedule_task = schedule_collection.find_one(query)
+
+
+    if 'category' in schedule_task:
+        del schedule_task['category']
+    if 'task_embeddings' in schedule_task:
+        del schedule_task['task_embeddings']
+    if '_id' in schedule_task:
+        schedule_task['task_id'] = str(schedule_task.pop('_id'))
+
+    print("schedule_task")
+    print(schedule_task)
+
+    return {
         "response": answer,
-        "data": task_data
+        "data": json.loads(json.dumps(schedule_task, default=json_serialize))
     }
 
-    print("Result:")
-    print(result)
 
-    return result
+    # result = {
+    #     "response": answer,
+    #     "data": task_data
+    # }
+
+    # return result
 
 def parse_steps_for_scheduled(steps_json: List[Dict[str, str]], date: str) -> List[StepForSchedule]:
     steps = []
@@ -1297,21 +1351,20 @@ def get_GetScheduleTool():
     )
 
 
-class initiateGeneralSchema(BaseModel):
+
+
+class InitiateGeneralSchema(BaseModel):
     task_name: str = Field(min_length=1, description="The name of the task that the user has entered")
-    start_time: str = Field(None, description="The time at which the user wants to begin the general task. PAY ATTENTION! am or pm may be appended to the start_time\
-                                             you SHOULD NOT extract them with the time, ONLY use them to calculate the start_time correctly\
-                                             Example: 7:40pm the start_time will be JUST 19:40\
-                                             Example: 8:10am the start_time will be JUST 8:10")
-    date: str = Field(None,
-                      description="The date at which the user wants to initiate his general task. it SHOULD be in this format %Y-%m-%d")
+    start_time: str = Field(None, description="The time at which the user wants to begin the general task. PAY ATTENTION! AM or PM may be appended to the start_time. \
+You SHOULD NOT extract them with the time, ONLY use them to calculate the start_time correctly. \
+Example: 7:40 PM, the start_time will be JUST 19:40. \
+Example: 8:10 AM, the start_time will be JUST 8:10.")
+    date: str = Field(None, description="The date at which the user wants to initiate the general task. It SHOULD be in this format %Y-%m-%d")
     category: str = Field(None, description="The category of the main task ONLY if the user inputs it")
-    insert_anyway: bool = Field(False,
-                                description="Regardless of the existence of an old task scheduled for the same start time, the user may choose to insert their task anyway.")
+    insert_anyway: bool = Field(False, description="Regardless of the existence of an old task scheduled for the same start time, the user may choose to insert their task anyway.")
     user_id: str = Field(min_length=1,
          description="The ID of the user. This field is always required, DON'T ever generate a user_id by yourself. Always take this argument from agent's arguments."
     )
-
 
 def initiateGeneral(task_name, user_id, start_time=None, category=None, date=None, insert_anyway=False):
     current_datetime = datetime.now()
@@ -1391,7 +1444,7 @@ def initiateGeneral(task_name, user_id, start_time=None, category=None, date=Non
 
                         if "steps" in x.keys():
                             for i, step in enumerate(x["steps"]):
-                                if "duration" in step:
+                                if "duration" in step and step["duration"] is not None:
                                     if step["duration"] != 0:
                                         if i == 0:
                                             step["start_time"] = start_iso_format
@@ -1425,8 +1478,7 @@ def initiateGeneral(task_name, user_id, start_time=None, category=None, date=Non
                         x["end_time"] = end_time
                         x = {"schedule_task": x}
 
-                        return insert_schedule_task_to_mongodb(x,user_id=user_id, category=category, insert_anyway=insert_anyway)
-
+                        return insert_schedule_task_to_mongodb(x, user_id, category=category, insert_anyway=False)
 
                     except ValueError as e:
                         return {
@@ -1485,7 +1537,7 @@ def get_initiateGeneral():
         name="initiateGeneral",
         description="Use this tool when the user wants to start a previously entered task",
         func=initiateGeneral,
-        args_schema=initiateGeneralSchema,
+        args_schema=InitiateGeneralSchema,
         # return_direct = True
     )
 
@@ -1676,10 +1728,7 @@ class ProposeDeleteTaskSchema(BaseModel):
     task_name: str = Field(..., description="The name of the task to be potentially deleted")
     user_id: str = Field(..., description="The identifier of the user who owns the task")
 
-def json_serialize(obj):
-    if isinstance(obj, (datetime, ObjectId)):
-        return str(obj)
-    raise TypeError("Type not serializable")
+
 
 def propose_delete_task(task_name: str, user_id: str) -> dict:
     try:
@@ -1768,6 +1817,8 @@ def confirm_and_delete_task(task_name: str, user_id: str) -> dict:
                 del schedule_task['category']
             if 'task_embeddings' in schedule_task:
                 del schedule_task['task_embeddings']
+            if '_id' in schedule_task:
+                schedule_task['task_id'] = str(schedule_task.pop('_id'))
             return {
                 "response": "Task has been deleted successfully. This action cannot be undone.",
                 "data": json.loads(json.dumps(schedule_task, default=json_serialize))
@@ -1779,6 +1830,8 @@ def confirm_and_delete_task(task_name: str, user_id: str) -> dict:
                 del general_task['category']
             if 'task_embeddings' in general_task:
                 del general_task['task_embeddings']
+            if '_id' in general_task:
+                general_task['task_id'] = str(general_task.pop('_id'))
             return {
                 "response": "Task has been deleted successfully. This action cannot be undone.",
                 "data": json.loads(json.dumps(general_task, default=json_serialize))
@@ -1874,6 +1927,8 @@ def retrieve_task(user_id: str, task_name: str) -> dict:
                 del schedule_task['category']
             if 'task_embeddings' in schedule_task:
                 del schedule_task['task_embeddings']
+            if '_id' in schedule_task:
+                schedule_task['task_id'] = str(schedule_task.pop('_id'))
             return {
                 "response": "Task found in schedule collection.",
                 "data": json.loads(json.dumps(schedule_task, default=json_serialize))
@@ -1884,6 +1939,8 @@ def retrieve_task(user_id: str, task_name: str) -> dict:
                 del general_task['category']
             if 'task_embeddings' in general_task:
                 del general_task['task_embeddings']
+            if '_id' in general_task:
+                general_task['task_id'] = str(general_task.pop('_id'))
             logger.info("General task found")
             return {
                 "response": "Task found in general collection.",
