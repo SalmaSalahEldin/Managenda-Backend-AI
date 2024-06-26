@@ -65,14 +65,6 @@ embeddings = OpenAIEmbeddings()
 
 
 # Define models
-
-os.environ["OPENAI_API_KEY"] = "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"
-client = OpenAI(api_key="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")
-os.environ["PINECONE_API_KEY"] = "da2b64b9-04d6-4ac3-b075-a242f4755479"
-embeddings = OpenAIEmbeddings()
-
-
-# Define models
 class GeneralTaskSchema(BaseModel):
     task_name: str = Field(description="The main task name that the user wants to perform")
     steps: str = Field(description="The steps mentioned in the text that should be done prior to the main task")
@@ -351,7 +343,7 @@ def insert_schedule_task_to_mongodb(task_data, user_id, category, insert_anyway,
     task_payload = TaskPayload(schedule_task=task_payload, general_task=None)
 
     try:
-        response = add_task_to_category_controller(task_payload, user_id=user_id, category=category, task_type=task_type, insert_anyway=insert_anyway)
+        response = add_task_to_category_controller(task_payload, user_id, category=category, task_type=task_type, insert_anyway=insert_anyway)
         answer = response
     except HTTPException as e:
         logger.error(f"Failed to insert scheduled task into MongoDB: {e.detail}")
@@ -446,6 +438,28 @@ def schedule_task(task_name, user_id, insert_anyway=False, steps=None, category=
         }
     }
 
+    # if "steps" in task_data['schedule_task']:
+    #     end_time_updated = False
+    #     for step in task_data['schedule_task']["steps"]:
+    #         if not end_time_updated:
+    #             start = step["start_time"]
+    #             end = step["end_time"]
+    #
+    #             start_iso = datetime.fromisoformat(start.replace('Z', '+00:00'))
+    #             end_iso = datetime.fromisoformat(end.replace('Z', '+00:00'))
+    #
+    #             if end_iso < start_iso:
+    #                 end_time_only = end.split("T")[1]
+    #                 if end_date:
+    #                     end = f"{end_date}T{end_time_only}"
+    #                 else:
+    #                     end_iso += timedelta(days=1)
+    #                     next_date = str(end_iso).split(" ")[0]
+    #                     end = f"{next_date}T{end_time_only}.000Z"
+    #
+    #                 end_time_updated = True
+    #                 step["end_time"] = end
+
     if "steps" in task_data['schedule_task']:
         end_time_updated = False
         for step in task_data['schedule_task']["steps"]:
@@ -460,13 +474,24 @@ def schedule_task(task_name, user_id, insert_anyway=False, steps=None, category=
                     end_time_only = end.split("T")[1]
                     if end_date:
                         end = f"{end_date}T{end_time_only}"
+                        using_end_date = True
                     else:
                         end_iso += timedelta(days=1)
                         next_date = str(end_iso).split(" ")[0]
                         end = f"{next_date}T{end_time_only}.000Z"
+                        using_end_date = False
 
                     end_time_updated = True
                     step["end_time"] = end
+
+            else:  # end time has been updated
+                if using_end_date:
+                    step["start_time"] = f"{end_date}T{step['start_time'].split('T')[1]}"
+                    step["end_time"] = f"{end_date}T{step['end_time'].split('T')[1]}"
+                else:
+                    step["start_time"] = f"{next_date}T{step['start_time'].split('T')[1]}"
+                    step["end_time"] = f"{next_date}T{step['end_time'].split('T')[1]}"
+
 
     logger.info(f"Task data: {task_data}")
     return insert_schedule_task_to_mongodb(task_data, user_id, category=category, insert_anyway=insert_anyway)
@@ -610,7 +635,7 @@ def set_reminder_tool(reminder_name, user_id, date=None, time=None, category="un
     parsed_output = {"schedule_task":new_json}
 
     print("parsed output: ",parsed_output) # to be deleted
-    return insert_schedule_task_to_mongodb(parsed_output, user_id=user_id, category=category, insert_anyway=insert_anyway)
+    return insert_schedule_task_to_mongodb(parsed_output, user_id, category=category, insert_anyway=insert_anyway)
 
     # return {
     #     "response": "Reminder set successfully.",
@@ -785,7 +810,8 @@ def update(task_name, collection_name, user_id, category=None, new_category=None
         try:
             client = OpenAI(api_key=os.getenv("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"))
             completion = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                # model="gpt-3.5-turbo",
+                model="gpt-4-0125-preview",
                 messages=[
                     {"role": "system", "content": prompt1},
                 ]
@@ -1719,45 +1745,60 @@ def get_propose_delete_task():
         args_schema=ProposeDeleteTaskSchema,
     )
 
-class ConfirmAndDeleteTaskSchema(BaseModel):
-    task_name: str = Field(..., description="The name of the task to be potentially deleted")
-    user_id: str = Field(..., description="The identifier of the user who owns the task")
-    collection_name: str = Field(..., description="The name of the collection where the task is stored. This should be either 'general_tasks' or 'schedule_tasks' and you should extract this from the propose_delete_task tool.")
 
-def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) -> dict:
+
+
+# def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) -> dict:
+def confirm_and_delete_task(task_name: str, user_id: str) -> dict:
     try:
         client = Constants.client
         client.admin.command('ping')
         db = client.get_database("Managenda")
-        collection = db.get_collection(collection_name)
+        schedule_collection = db.get_collection("schedule_tasks")
+        general_collection = db.get_collection("general_tasks")
 
         query = {"task_name": task_name, "user_id": user_id}
-        task_to_delete = collection.find_one(query)  # Retrieve task details before deletion
+        schedule_task = schedule_collection.find_one(query)
+        general_task = general_collection.find_one(query)
 
-        if task_to_delete:
-            result = collection.delete_one(query)
 
-            if result.deleted_count > 0:
-                if 'task_embeddings' in task_to_delete:
-                    del task_to_delete['task_embeddings']  # Remove the task_embeddings field
-                return {
-                    "response": "Task deleted successfully.",
-                    "data": json.loads(json.dumps(task_to_delete, default=json_serialize))  # Return the modified task's payload
-                }
-            else:
-                return {
-                    "response": "Task deletion failed. It may have already been deleted or not found.",
-                    "data": {}
-                }
-        else:
+        if schedule_task:
+            schedule_collection.delete_one(query)
+            if 'category' in schedule_task:
+                del schedule_task['category']
+            if 'task_embeddings' in schedule_task:
+                del schedule_task['task_embeddings']
             return {
-                "response": "Task not found.",
+                "response": "Task has been deleted successfully. This action cannot be undone.",
+                "data": json.loads(json.dumps(schedule_task, default=json_serialize))
+            }
+
+        if general_task:
+            general_collection.delete_one(query)
+            if 'category' in general_task:
+                del general_task['category']
+            if 'task_embeddings' in general_task:
+                del general_task['task_embeddings']
+            return {
+                "response": "Task has been deleted successfully. This action cannot be undone.",
+                "data": json.loads(json.dumps(general_task, default=json_serialize))
+            }
+
+        most_similar_task, collection = SelfQuery.retrieve_most_similar_task_from_the_both_collections(task_name, user_id)
+        if most_similar_task:
+            return {
+                "response": f"Exact task not found. Found similar task '{most_similar_task}'. Confirm to delete this task instead. This action cannot be undone.",
                 "data": {
-                    "task_name": task_name,
-                    "user_id": user_id,
-                    "collection_name": collection_name
+                    "task_name": most_similar_task,
+                    "collection_name": collection,
+                    "is_similar": True
                 }
             }
+
+        return {
+            "response": "No task or similar task found.",
+            "data": {}
+        }
 
     except errors.ConfigurationError as e:
         return {
@@ -1777,7 +1818,7 @@ def confirm_and_delete_task(task_name: str, user_id: str, collection_name: str) 
 
 def get_confirm_and_delete_task():
     return StructuredTool(
-        name="delete_task",
+        name="confirm_and_delete_task",
         description="""You should use this tool after user's deletion confirmation or after invoking the propose_delete_task tool. 
         After ensuring the confirmation of task deletion, this tool allows users to directly delete tasks from the MongoDB database. 
         It's designed for removing tasks that are no longer needed, such as completed tasks not to be repeated or tasks added by mistake. 
@@ -1785,7 +1826,7 @@ def get_confirm_and_delete_task():
         Users are advised to carefully confirm task details before deletion due to the irreversible nature of this action. 
         Use with caution to avoid unintended data loss.""",
         func=confirm_and_delete_task,
-        args_schema=ConfirmAndDeleteTaskSchema,
+        args_schema=ProposeDeleteTaskSchema,
     )
 
 
@@ -1924,8 +1965,8 @@ def get_time_management_tool():
 
 
 
-from pydantic import BaseModel, Field
-from openai import OpenAI
+# from pydantic import BaseModel, Field
+# from openai import OpenAI
 
 # client = OpenAI()
 
@@ -1933,24 +1974,17 @@ class GreetingThankingToolSchema(BaseModel):
     query: str = Field(..., min_length=1, description="User queries related to greetings, thanking, or goodbyes")
 
 def process_greeting_thanking(query):
-    messages = [
-        {"role": "system", "content": "You are an assistant that can recognize and respond to greetings, thanking, and goodbye messages."},
-        {"role": "user", "content": query}
-    ]
-
     try:
-        # response = client.chat.completions.create(model="gpt-3.5-turbo",
-        # messages=messages)
-
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "user", "content": "Hello!"}
+                {"role": "system",
+                 "content": "You are an assistant that can recognize and respond to greetings, thanking, and goodbye messages."},
+                {"role": "user", "content": query}
             ]
         )
 
-        answer = response.choices[0].message.content.strip()
-        # answer = client.ChatCompletion.create()
+        answer = response.choices[0].message.content.replace('\n', ' ')
 
         return {
             "response": answer,
@@ -1965,7 +1999,7 @@ def process_greeting_thanking(query):
 def get_greeting_thanking_tool():
     return StructuredTool(
         name="greeting_thanking",
-        description="Use this tool to respond to user greetings, thanking, or goodbye messages.",
+        description="Use this tool to respond to user greetings, thanking, or goodbye messages in any language.",
         func=process_greeting_thanking,
         args_schema=GreetingThankingToolSchema,
     )
