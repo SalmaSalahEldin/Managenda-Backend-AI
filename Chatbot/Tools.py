@@ -1870,16 +1870,24 @@ def retrieve_task(user_id: str, task_name: str) -> dict:
     try:
         if schedule_task:
             logger.info("Schedule task found")
+            if 'category' in schedule_task:
+                del schedule_task['category']
+            if 'task_embeddings' in schedule_task:
+                del schedule_task['task_embeddings']
             return {
                 "response": "Task found in schedule collection.",
-                "data": schedule_task
+                "data": json.loads(json.dumps(schedule_task, default=json_serialize))
             }
 
         if general_task:
+            if 'category' in general_task:
+                del general_task['category']
+            if 'task_embeddings' in general_task:
+                del general_task['task_embeddings']
             logger.info("General task found")
             return {
                 "response": "Task found in general collection.",
-                "data": general_task
+                "data": json.loads(json.dumps(general_task, default=json_serialize))
             }
 
         logger.info("Finding similar tasks")
