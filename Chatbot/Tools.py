@@ -1965,10 +1965,6 @@ def get_time_management_tool():
 
 
 
-# from pydantic import BaseModel, Field
-# from openai import OpenAI
-
-# client = OpenAI()
 
 class GreetingThankingToolSchema(BaseModel):
     query: str = Field(..., min_length=1, description="User queries related to greetings, thanking, or goodbyes")
@@ -2003,3 +1999,35 @@ def get_greeting_thanking_tool():
         func=process_greeting_thanking,
         args_schema=GreetingThankingToolSchema,
     )
+
+
+
+
+
+
+class IrrelevantQueryToolSchema(BaseModel):
+    query: str = Field(..., min_length=1, description="User queries that are not related to tasks or task management")
+
+def process_irrelevant_query(query: str):
+    try:
+        response_message = "Your query is not related to tasks or task management. Please provide a relevant query."
+        return {
+            "response": response_message,
+            "data": {}
+        }
+    except Exception as e:
+        return {
+            "response": f"An error occurred: {str(e)}",
+            "data": {}
+        }
+
+def get_irrelevant_query_tool():
+    return StructuredTool(
+        name="irrelevant_query",
+        description="Use this tool to inform users when their queries are not related to tasks or task management.",
+        func=process_irrelevant_query,
+        args_schema=IrrelevantQueryToolSchema,
+    )
+
+
+
