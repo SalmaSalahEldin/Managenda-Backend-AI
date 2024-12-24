@@ -10,8 +10,8 @@ from openai import OpenAI
 from Chatbot import Constants
 
 # Set environment variables securely
-os.environ["OPENAI_API_KEY"] = "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"
-os.environ["PINECONE_API_KEY"] = "da2b64b9-04d6-4ac3-b075-a242f4755479"
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["PINECONE_API_KEY"] = ""
 
 index_name = Constants.PINECONE_INDEX_NAME
 docsearch = Constants.PINECONE_DOSEARCH
